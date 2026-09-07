@@ -1,5 +1,8 @@
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 def calculate_metrics(y_true, y_pred):
     y_true = np.array(y_true)
@@ -25,5 +28,16 @@ def calculate_metrics(y_true, y_pred):
         "acc_total": float(acc_total),
         "precision": float(precision),
         "recall": float(recall),
-        "acc_per_class": acc_per_class
+        "acc_per_class": acc_per_class,
+        "confusion_matrix": cm 
     }
+
+def plot_confusion_matrix_figure(cm, class_names):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=class_names, yticklabels=class_names, ax=ax)
+    plt.ylabel('Classe Real (True)')
+    plt.xlabel('Classe Predita (Pred)')
+    plt.title('Matriz de Confusão')
+    plt.tight_layout()
+    return fig

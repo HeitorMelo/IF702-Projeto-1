@@ -3,10 +3,11 @@ import wandb
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib.pyplot as plt
 
 from src.data_loader import get_dataloaders
 from src.models_mlp import build_mlp, train_epoch, validate_epoch
-from src.metrics import calculate_metrics
+from src.metrics import calculate_metrics, plot_confusion_matrix_figure
 
 from src.utils import EarlyStopping
 
@@ -81,18 +82,22 @@ def objective(trial):
     # Regra importante: Carrega os pesos antes de ativar a ocntagem da paciencia
     model.load_state_dict(torch.load(model_path))
 
-    # Plota a Matriz de Confusão Interativa do WandB ao final do Trial
-    wandb.log({
-        "confusion_matrix": wandb.plot.confusion_matrix(
-            probs=None,
-            y_true=labels,
-            preds=preds,
-            class_names=class_names
-        )
-    })
-            
-    wandb.finish()
+    # 2. Recalcula a validação com os pesos do MELHOR modelo
+    val_loss, inference_time, labels, preds = validate_epoch(
+        model, val_loader, criterion, criterion_name, epoch + 1, epochs
+    )
+    best_metrics = calculate_metrics(labels, preds)
+
+    # 3. Plota a figura estática em alta resolução para o WandB
+    fig = plot_confusion_matrix_figure(best_metrics["confusion_matrix"], class_names)
     
+    wandb.log({
+        "confusion_matrix_img": wandb.Image(fig)
+    })
+    
+    plt.close(fig)  # Libera a memória do Matplotlib
+
+    wandb.finish()
     return metrics["acc_total"], sum(inference_times) / len(inference_times)
 
 if __name__ == "__main__":
