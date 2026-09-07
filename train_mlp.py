@@ -21,6 +21,7 @@ def objective(trial):
     run_name = f"trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
 
     run = wandb.init(
+        entity="Proj-IF702",
         project="miniprojeto1-cifar10",
         name=run_name,
         group="mlp_optimization",
