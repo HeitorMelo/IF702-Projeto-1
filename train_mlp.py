@@ -8,6 +8,9 @@ from src.data_loader import get_dataloaders
 from src.models_mlp import build_mlp, train_epoch, validate_epoch
 from src.metrics import calculate_metrics
 
+from src.utils import EarlyStopping
+
+
 def objective(trial):
     lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
     num_layers = trial.suggest_int("num_layers", 1, 3)
@@ -26,14 +29,23 @@ def objective(trial):
         reinit=True
     )
     
-    train_loader, val_loader = get_dataloaders(batch_size=batch_size, is_mlp=True)
+    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=True)
     
     model = build_mlp(3072, 10, num_layers=num_layers, neurons_per_layer=64, activation_name=activation_name)
     
     criterion = nn.MSELoss() if criterion_name == "MSELoss" else nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    
-    epochs = 5
+
+
+
+    class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
+                   'dog', 'frog', 'horse', 'ship', 'truck'] 
+
+
+    model_path = f"best_mlp_trial_{trial.number}.pth"
+    early_stopping = EarlyStopping(patience=5, min_delta=1e-3,path=model_path)
+
+    epochs = 15
     inference_times = []
     for epoch in range(epochs):
         train_loss = train_epoch(model, train_loader, optimizer, criterion, criterion_name, epoch + 1, epochs)
@@ -43,13 +55,40 @@ def objective(trial):
 
         metrics = calculate_metrics(labels, preds)
         
-        wandb.log({
+        log_data={
             "epoch": epoch, 
             "train_loss": train_loss,
             "val_loss": val_loss, 
-            "val_acc": metrics["acc_total"]
-        })
-    
+            "val_acc": metrics["acc_total"],
+            "val_precision": metrics["precision"],
+            "val_recall": metrics["recall"],
+            "val_inference_time_batch": inference_time
+
+        }
+        for class_idx, class_acc in metrics["acc_per_class"].items():
+            class_label = class_names[class_idx]
+            log_data[f"acc_class/{class_label}"] = class_acc
+
+
+        wandb.log(log_data)
+
+        early_stopping(val_loss,model)
+        if early_stopping.early_stop:
+            print(f"Early stopping ativado na época {epoch}")
+            break
+
+    # Regra importante: Carrega os pesos antes de ativar a ocntagem da paciencia
+    model.load_state_dict(torch.load(model_path))
+
+    # Plota a Matriz de Confusão Interativa do WandB ao final do Trial
+    wandb.log({
+        "confusion_matrix": wandb.plot.confusion_matrix(
+            probs=None,
+            y_true=labels,
+            preds=preds,
+            class_names=class_names
+        )
+    })
             
     wandb.finish()
     
