@@ -47,7 +47,7 @@ def train_epoch(model, dataloader, optimizer, criterion, criterion_name, epoch=0
         outputs = model(images)
         
         if criterion_name == "MSELoss":
-            labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float()
+            labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float().to(images.device)
         else:
             labels_loss = labels
             
@@ -77,7 +77,7 @@ def validate_epoch(model, dataloader, criterion, criterion_name, epoch=0, total_
             outputs = timed_model(images)
             
             if criterion_name == "MSELoss":
-                labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float()
+                labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float().to(images.device) 
             else:
                 labels_loss = labels
                 
