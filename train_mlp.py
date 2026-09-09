@@ -58,7 +58,7 @@ def objective(trial):
         metrics = calculate_metrics(labels, preds)
         
         log_data={
-            "epoch": epoch, 
+            "epoch": epoch + 1, 
             "train_loss": train_loss,
             "val_loss": val_loss, 
             "val_acc": metrics["acc_total"],
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         sampler=optuna.samplers.TPESampler(),
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=3)
+    study.optimize(objective, n_trials=20)
     
     pareto_front_trials = study.best_trials
 
