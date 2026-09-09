@@ -1,3 +1,4 @@
+import os
 import optuna
 import wandb
 import torch
@@ -44,7 +45,7 @@ def objective(trial):
                    'dog', 'frog', 'horse', 'ship', 'truck'] 
 
 
-    model_path = f"best_mlp_trial_{trial.number}.pth"
+    model_path = os.path.join(wandb.run.dir, f"best_mlp_trial_{trial.number}.pth")
     early_stopping = EarlyStopping(patience=5, min_delta=1e-3,path=model_path)
 
     epochs = 15
