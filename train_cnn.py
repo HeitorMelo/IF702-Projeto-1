@@ -119,6 +119,7 @@ def objective(trial):
     
     plt.close(fig)  # Libera a memória do Matplotlib
 
+    wandb.save(model_path, base_path=run.dir) # save best model no wandb
     wandb.finish()
     return best_metrics["acc_total"], sum(inference_times) / len(inference_times)
 
