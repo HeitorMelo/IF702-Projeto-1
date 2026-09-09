@@ -1,3 +1,4 @@
+import os
 import optuna
 import wandb
 import torch
@@ -15,12 +16,12 @@ from src.utils import EarlyStopping
 
 def objective(trial):
     lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
-    num_conv_layers = trial.suggest_int("num_conv_layers", 1, 3)  # Tamanho da rede
-    batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
+    num_conv_layers = trial.suggest_categorical("num_conv_layers",[1, 3, 5, 7])  
+    batch_size = trial.suggest_categorical("batch_size", [32, 64, 128,256])
     criterion_name = trial.suggest_categorical("criterion", ["CrossEntropyLoss", "MSELoss"])
-    activation_name = trial.suggest_categorical("activation", ["ReLU", "LeakyReLU", "GELU"])
+    activation_name = trial.suggest_categorical("activation", ["ReLU", "LeakyReLU", "GELU"]) # leaky aplica uma leve inclicnao pra valores negativos,gelu é otima no contexto imagem
 
-    kernel_size = trial.suggest_categorical("kernel_size", [3, 5])  # Janela de convolução
+    kernel_size = trial.suggest_categorical("kernel_size", [2,3,5])  # tamanho do filtro
     stride = trial.suggest_categorical("stride", [1, 2])
     padding = trial.suggest_categorical("padding", [0, 1, 2])
     dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.5)
@@ -34,8 +35,8 @@ def objective(trial):
         project="miniprojeto1-cifar10",
         name=run_name,
         group="cnn_optimization",
-        config={"lr": lr, "num_conv_layers": num_conv_layers, "kernel_size": kernel_size, "stride": stride, "padding": padding, "dropout_rate": dropout_rate, "pool_size": pool_size, "batch_size": batch_size, 
-                        "criterion": criterion_name, "activation": activation_name},
+        config={"lr": lr, "num_conv_layers": num_conv_layers, "kernel_size": kernel_size, "stride": stride, "padding": padding, "dropout_rate": dropout_rate,
+            "pool_size": pool_size, "batch_size": batch_size,"criterion": criterion_name, "activation": activation_name},
         reinit=True
     )
     
@@ -64,7 +65,7 @@ def objective(trial):
                    'dog', 'frog', 'horse', 'ship', 'truck'] 
 
 
-    model_path = f"best_cnn_trial_{trial.number}.pth"
+    model_path = os.path.join(wandb.run.dir, f"best_cnn_trial_{trial.number}.pth")
     early_stopping = EarlyStopping(patience=5, min_delta=1e-3,path=model_path)
 
     epochs = 15
@@ -79,7 +80,7 @@ def objective(trial):
         metrics = calculate_metrics(labels, preds)
         
         log_data={
-            "epoch": epoch, 
+            "epoch": epoch + 1, 
             "train_loss": train_loss,
             "val_loss": val_loss, 
             "val_acc": metrics["acc_total"],
@@ -129,7 +130,7 @@ if __name__ == "__main__":
         sampler=optuna.samplers.TPESampler(),
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=3)
+    study.optimize(objective, n_trials=20)
     
     pareto_front_trials = study.best_trials
 
