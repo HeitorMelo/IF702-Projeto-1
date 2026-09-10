@@ -77,7 +77,7 @@ def objective(trial):
 
         early_stopping(val_loss,model)
         if early_stopping.early_stop:
-            print(f"Early stopping ativado na época {epoch}")
+            print(f"Early stopping ativado na época {epoch + 1}")
             break
 
     # Regra importante: Carrega os pesos antes de ativar a ocntagem da paciencia
