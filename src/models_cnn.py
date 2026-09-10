@@ -58,13 +58,25 @@ class CNN(nn.Module):
         flatten_size = last_num_filters * current_spatial_size * current_spatial_size
         
         # Camadas Densas / Classificador Final
+        # Dimensão vinda da saída do conv_block achatada
+        in_features = flatten_size
+        hidden_1 = max(in_features // 2, 64)
+        hidden_2 = max(hidden_1 // 2, 32)
+
         self.fc_block = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(flatten_size, 128),
+            # Bloco Denso 1
+            nn.Linear(in_features, hidden_1),
             activation_function(),
             nn.Dropout(dropout_rate),
-            nn.Linear(128, num_classes)# saida em logits,(cross entropy ja faz isso internamnt)
+            # Bloco Denso 2
+            nn.Linear(hidden_1, hidden_2),
+            activation_function(),
+            nn.Dropout(dropout_rate),
+            # Classificador Final (Logits)
+            nn.Linear(hidden_2, num_classes)
         )
+
 
     def forward(self, x):
         x = self.conv_block(x)
