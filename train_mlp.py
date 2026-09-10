@@ -1,3 +1,4 @@
+import os
 import optuna
 import wandb
 import torch
@@ -19,7 +20,7 @@ def objective(trial):
     criterion_name = trial.suggest_categorical("criterion", ["CrossEntropyLoss", "MSELoss"])
     activation_name = trial.suggest_categorical("activation", ["ReLU", "Tanh"])
 
-    run_name = f"trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
+    run_name = f"MLP_trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
 
     run = wandb.init(
         entity="Proj-IF702",
@@ -44,7 +45,7 @@ def objective(trial):
                    'dog', 'frog', 'horse', 'ship', 'truck'] 
 
 
-    model_path = f"best_mlp_trial_{trial.number}.pth"
+    model_path = os.path.join(wandb.run.dir, f"best_mlp_trial_{trial.number}.pth")
     early_stopping = EarlyStopping(patience=5, min_delta=1e-3,path=model_path)
 
     epochs = 15
@@ -58,7 +59,7 @@ def objective(trial):
         metrics = calculate_metrics(labels, preds)
         
         log_data={
-            "epoch": epoch, 
+            "epoch": epoch + 1, 
             "train_loss": train_loss,
             "val_loss": val_loss, 
             "val_acc": metrics["acc_total"],
@@ -97,8 +98,9 @@ def objective(trial):
     
     plt.close(fig)  # Libera a memória do Matplotlib
 
+    wandb.save(model_path, base_path=run.dir) # save best model no wandb
     wandb.finish()
-    return metrics["acc_total"], sum(inference_times) / len(inference_times)
+    return best_metrics["acc_total"], sum(inference_times) / len(inference_times)
 
 if __name__ == "__main__":
     study = optuna.create_study(
@@ -108,7 +110,7 @@ if __name__ == "__main__":
         sampler=optuna.samplers.TPESampler(),
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=3)
+    study.optimize(objective, n_trials=20)
     
     pareto_front_trials = study.best_trials
 
