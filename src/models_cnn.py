@@ -63,7 +63,7 @@ class CNN(nn.Module):
             nn.Linear(flatten_size, 128),
             activation_function(),
             nn.Dropout(dropout_rate),
-            nn.Linear(128, num_classes)
+            nn.Linear(128, num_classes)# saida em logits,(cross entropy ja faz isso internamnt)
         )
 
     def forward(self, x):
@@ -122,10 +122,14 @@ def train_epoch(model, dataloader, optimizer, criterion, criterion_name, epoch=0
         
         if criterion_name == "MSELoss":
             labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float().to(images.device)
+            # Converte logits em probabilidades entre [0, 1] antes de calcular o erro quadrático
+            loss_inputs = torch.softmax(outputs, dim=1)
         else:
             labels_loss = labels
+            loss_inputs = outputs  # CrossEntropyLoss recebe os logits puros
+
             
-        loss = criterion(outputs, labels_loss)
+        loss = criterion(loss_inputs, labels_loss)
         loss.backward()
         optimizer.step()
         
@@ -148,11 +152,13 @@ def validate_epoch(model, dataloader, criterion, criterion_name, epoch=0, total_
             outputs = timed_model(images)
             
             if criterion_name == "MSELoss":
-                labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float().to(images.device) 
+                labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float().to(images.device)
+                loss_inputs = torch.softmax(outputs, dim=1)
             else:
                 labels_loss = labels
+                loss_inputs = outputs  # CrossEntropyLoss recebe os logits puros
                 
-            loss = criterion(outputs, labels_loss)
+            loss = criterion(loss_inputs,labels_loss)
             running_loss += loss.item()
             
             preds = torch.argmax(outputs, dim=1)
@@ -165,3 +171,7 @@ def validate_epoch(model, dataloader, criterion, criterion_name, epoch=0, total_
     avg_time_per_batch = timed_model.total_time / len(dataloader)
             
     return avg_loss, avg_time_per_batch, all_labels, all_preds
+
+
+
+#ajuste pra mse ( se usad como funcao de perda na camda de saida nos logits puros- crossenrtopy ja faz softmax internamente- fazendo com que o cálculo do erro quadrático respeite a probabilidade das 10 classes do CIFAR-10.)
