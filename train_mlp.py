@@ -18,7 +18,7 @@ def objective(trial):
     num_layers = trial.suggest_int("num_layers", 1, 3)
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
     criterion_name = trial.suggest_categorical("criterion", ["CrossEntropyLoss", "MSELoss"])
-    activation_name = trial.suggest_categorical("activation", ["ReLU", "Tanh"])
+    activation_name = trial.suggest_categorical("activation", ["ReLU", "Tanh", "Sigmoid"])
     dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.3)
     weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
 
