@@ -19,6 +19,7 @@ def objective(trial):
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
     criterion_name = trial.suggest_categorical("criterion", ["CrossEntropyLoss", "MSELoss"])
     activation_name = trial.suggest_categorical("activation", ["ReLU", "Tanh"])
+    dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.3)
 
     run_name = f"MLP_trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
 
@@ -28,13 +29,13 @@ def objective(trial):
         name=run_name,
         group="mlp_optimization",
         config={"lr": lr, "num_layers": num_layers, "batch_size": batch_size, 
-                "criterion": criterion_name, "activation": activation_name},
+                "criterion": criterion_name, "activation": activation_name, "dropout_rate":dropout_rate},
         reinit=True
     )
     
     train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=True)
     
-    model = build_mlp(3072, 10, num_layers=num_layers, neurons_per_layer=64, activation_name=activation_name)
+    model = build_mlp(3072, 10, num_layers=num_layers, neurons_per_layer=64, activation_name=activation_name, dropout_rate=dropout_rate)
     
     criterion = nn.MSELoss() if criterion_name == "MSELoss" else nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)

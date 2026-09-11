@@ -6,7 +6,7 @@ from src.utils import TimedModel
 from tqdm import tqdm
 
 class MLP(nn.Module):
-    def __init__(self, input_size, num_classes, num_layers, neurons_per_layer, activation_function):
+    def __init__(self, input_size, num_classes, num_layers, neurons_per_layer, activation_function, dropout_rate):
         super(MLP, self).__init__()
         
         layers = []
@@ -15,6 +15,8 @@ class MLP(nn.Module):
         for _ in range(num_layers):
             layers.append(nn.Linear(in_features, neurons_per_layer))
             layers.append(activation_function())
+            if(dropout_rate > 0):
+                layers.append(nn.Dropout(dropout_rate))
             in_features = neurons_per_layer
             
         layers.append(nn.Linear(in_features, num_classes))
@@ -28,11 +30,11 @@ class MLP(nn.Module):
             x = self.forward(x)
             return torch.argmax(x, dim=1)
 
-def build_mlp(input_size, num_classes, num_layers, neurons_per_layer, activation_name):
+def build_mlp(input_size, num_classes, num_layers, neurons_per_layer, activation_name,dropout_rate,):
     activations = {"ReLU": nn.ReLU, "Tanh": nn.Tanh, "Sigmoid": nn.Sigmoid}
     activation_function = activations[activation_name]
     
-    return MLP(input_size, num_classes, num_layers, neurons_per_layer, activation_function)
+    return MLP(input_size, num_classes, num_layers, neurons_per_layer, activation_function,dropout_rate)
 
 #### -------------------------
 
