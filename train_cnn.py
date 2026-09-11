@@ -120,14 +120,16 @@ def objective(trial):
     plt.close(fig)  # Libera a memória do Matplotlib
 
     wandb.save(model_path, base_path=run.dir) # save best model no wandb
+    average_inference_time = sum(inference_times) / len(inference_times)
+    trial.set_user_attr("inference_time", average_inference_time)
     wandb.finish()
-    return best_metrics["acc_total"], sum(inference_times) / len(inference_times)
+    return best_metrics["acc_total"]
 
 if __name__ == "__main__":
     study = optuna.create_study(
-        study_name="cnn-cifar10-multiobjective",
+        study_name="cnn-cifar10-accuracy-v2",
         storage="sqlite:///cifar10_optuna.db", 
-        directions=["maximize", "minimize"],
+        direction="maximize",
         sampler=optuna.samplers.TPESampler(),
         load_if_exists=True
     )
@@ -140,9 +142,10 @@ if __name__ == "__main__":
     for i, trial in enumerate(pareto_front_trials):
         print(f"--- Pareto Optimal Model {i+1} ---")
         
-        accuracy = trial.values[0]
-        inference_time = trial.values[1]
+        accuracy = trial.value
+        inference_time = trial.user_attrs.get("inference_time")
         
         print(f"Accuracy: {accuracy:.4f}")
-        print(f"Inference Time: {inference_time:.6f} sec/batch")
+        if inference_time is not None:
+            print(f"Inference Time: {inference_time:.6f} sec/batch")
         print(f"Hyperparameters: {trial.params}\n")
