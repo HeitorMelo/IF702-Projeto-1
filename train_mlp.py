@@ -20,6 +20,7 @@ def objective(trial):
     criterion_name = trial.suggest_categorical("criterion", ["CrossEntropyLoss", "MSELoss"])
     activation_name = trial.suggest_categorical("activation", ["ReLU", "Tanh"])
     dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.3)
+    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
 
     run_name = f"MLP_trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
 
@@ -29,7 +30,7 @@ def objective(trial):
         name=run_name,
         group="mlp_optimization",
         config={"lr": lr, "num_layers": num_layers, "batch_size": batch_size, 
-                "criterion": criterion_name, "activation": activation_name, "dropout_rate":dropout_rate},
+                "criterion": criterion_name, "activation": activation_name, "dropout_rate":dropout_rate, "weight_decay":weight_decay},
         reinit=True
     )
     
@@ -38,7 +39,7 @@ def objective(trial):
     model = build_mlp(3072, 10, num_layers=num_layers, neurons_per_layer=64, activation_name=activation_name, dropout_rate=dropout_rate)
     
     criterion = nn.MSELoss() if criterion_name == "MSELoss" else nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 
 
