@@ -16,15 +16,15 @@ from src.utils import EarlyStopping
 
 def objective(trial):
     lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
-    num_conv_layers = trial.suggest_categorical("num_conv_layers",[1, 3, 5, 7])  
-    batch_size = trial.suggest_categorical("batch_size", [32, 64, 128,256])
+    num_conv_layers = trial.suggest_categorical("num_conv_layers",[1,2,3])  
+    batch_size = trial.suggest_categorical("batch_size", [64,128,256])
     criterion_name = trial.suggest_categorical("criterion", ["CrossEntropyLoss", "MSELoss"])
     activation_name = trial.suggest_categorical("activation", ["ReLU", "LeakyReLU", "GELU"]) # leaky aplica uma leve inclicnao pra valores negativos,gelu é otima no contexto imagem
 
-    kernel_size = trial.suggest_categorical("kernel_size", [2,3,5])  # tamanho do filtro
+    kernel_size = trial.suggest_categorical("kernel_size", [3,5])  # tamanho do filtro
     stride = trial.suggest_categorical("stride", [1, 2])
     padding = trial.suggest_categorical("padding", [0, 1, 2])
-    dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.5)
+    dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.3)
     pool_size = trial.suggest_categorical("pool_size", [1, 2])  # 1 = sem pooling, 2 = pool 2x2
     
 
@@ -98,7 +98,7 @@ def objective(trial):
 
         early_stopping(val_loss,model)
         if early_stopping.early_stop:
-            print(f"Early stopping ativado na época {epoch}")
+            print(f"Early stopping ativado na época {epoch + 1}")
             break
     
     # Regra importante: Carrega os pesos antes de ativar a ocntagem da paciencia
