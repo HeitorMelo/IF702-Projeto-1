@@ -126,7 +126,7 @@ def objective(trial):
 
 if __name__ == "__main__":
     study = optuna.create_study(
-        study_name="cnn-cifar10-accuracy",
+        study_name="cnn-cifar10-accuracy-",
         storage="sqlite:///cifar10_optuna.db", 
         direction="maximize",
         sampler=optuna.samplers.TPESampler(),
