@@ -18,7 +18,9 @@ def objective(trial):
     num_layers = trial.suggest_int("num_layers", 1, 3)
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
     criterion_name = trial.suggest_categorical("criterion", ["CrossEntropyLoss", "MSELoss"])
-    activation_name = trial.suggest_categorical("activation", ["ReLU", "Tanh"])
+    activation_name = trial.suggest_categorical("activation", ["ReLU", "Tanh", "Sigmoid"])
+    dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.3)
+    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
 
     run_name = f"MLP_trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
 
@@ -28,16 +30,16 @@ def objective(trial):
         name=run_name,
         group="mlp_optimization",
         config={"lr": lr, "num_layers": num_layers, "batch_size": batch_size, 
-                "criterion": criterion_name, "activation": activation_name},
+                "criterion": criterion_name, "activation": activation_name, "dropout_rate":dropout_rate, "weight_decay":weight_decay},
         reinit=True
     )
     
     train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=True)
     
-    model = build_mlp(3072, 10, num_layers=num_layers, neurons_per_layer=64, activation_name=activation_name)
+    model = build_mlp(3072, 10, num_layers=num_layers, neurons_per_layer=64, activation_name=activation_name, dropout_rate=dropout_rate)
     
     criterion = nn.MSELoss() if criterion_name == "MSELoss" else nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 
 
@@ -99,14 +101,16 @@ def objective(trial):
     plt.close(fig)  # Libera a memória do Matplotlib
 
     wandb.save(model_path, base_path=run.dir) # save best model no wandb
+    average_inference_time = sum(inference_times) / len(inference_times)
+    trial.set_user_attr("inference_time", average_inference_time)
     wandb.finish()
-    return best_metrics["acc_total"], sum(inference_times) / len(inference_times)
+    return best_metrics["acc_total"]
 
 if __name__ == "__main__":
     study = optuna.create_study(
-        study_name="mlp-cifar10-multiobjective",
+        study_name="mlp-cifar10-accuracy-v3",
         storage="sqlite:///cifar10_optuna.db", 
-        directions=["maximize", "minimize"],
+        direction="maximize",
         sampler=optuna.samplers.TPESampler(),
         load_if_exists=True
     )
@@ -119,9 +123,10 @@ if __name__ == "__main__":
     for i, trial in enumerate(pareto_front_trials):
         print(f"--- Pareto Optimal Model {i+1} ---")
         
-        accuracy = trial.values[0]
-        inference_time = trial.values[1]
+        accuracy = trial.value
+        inference_time = trial.user_attrs.get("inference_time")
         
         print(f"Accuracy: {accuracy:.4f}")
-        print(f"Inference Time: {inference_time:.6f} sec/batch")
+        if inference_time is not None:
+            print(f"Inference Time: {inference_time:.6f} sec/batch")
         print(f"Hyperparameters: {trial.params}\n")
