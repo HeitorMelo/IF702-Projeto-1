@@ -54,6 +54,8 @@ def objective(trial):
 
     epochs = 15
     inference_times = []
+    best_acc=0.0
+    best_labels, best_preds = None, None
     for epoch in range(epochs):
         train_loss = train_epoch(model, train_loader, optimizer, criterion, criterion_name, epoch + 1, epochs)
         
@@ -61,6 +63,11 @@ def objective(trial):
         inference_times.append(inference_time)
 
         metrics = calculate_metrics(labels, preds)
+
+        if metrics["acc_total"] > best_acc:
+            best_acc = metrics["acc_total"]
+            best_labels, best_preds = labels, preds
+
         
         log_data={
             "epoch": epoch + 1, 
@@ -84,29 +91,23 @@ def objective(trial):
             print(f"Early stopping ativado na época {epoch + 1}")
             break
 
-    # Regra importante: Carrega os pesos antes de ativar a ocntagem da paciencia
-    model.load_state_dict(torch.load(model_path))
 
-    # 2. Recalcula a validação com os pesos do MELHOR modelo
-    val_loss, inference_time, labels, preds = validate_epoch(
-        model, val_loader, criterion, criterion_name, epoch + 1, epochs
-    )
-    best_metrics = calculate_metrics(labels, preds)
-
+    best_metrics = calculate_metrics(best_labels, best_preds)
     # 3. Plota a figura estática em alta resolução para o WandB
     fig = plot_confusion_matrix_figure(best_metrics["confusion_matrix"], class_names)
-    
     wandb.log({
         "confusion_matrix_img": wandb.Image(fig)
     })
-    
+
     plt.close(fig)  # Libera a memória do Matplotlib
 
     wandb.save(model_path, base_path=run.dir) # save best model no wandb
+
     average_inference_time = sum(inference_times) / len(inference_times)
-    trial.set_user_attr("inference_time", average_inference_time)
+    trial.set_user_attr("avg_inference_time", average_inference_time)
     wandb.finish()
-    return best_metrics["acc_total"]
+
+    return best_acc
 
 if __name__ == "__main__":
     study = optuna.create_study(
@@ -118,17 +119,24 @@ if __name__ == "__main__":
     )
     study.optimize(objective, n_trials=20)
     
-    pareto_front_trials = study.best_trials
 
-    print(f"Number of Pareto-optimal models found: {len(pareto_front_trials)}\n")
+    # Filtra e exibe o Top 3
+    completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    sorted_trials = sorted(completed_trials, key=lambda t: t.value, reverse=True)
+    top_3_trials = sorted_trials[:3]
 
-    for i, trial in enumerate(pareto_front_trials):
-        print(f"--- Pareto Optimal Model {i+1} ---")
-        
+
+    print(f"\n================ TOP {len(top_3_trials)} MELHORES MODELOS ================\n")
+
+    for rank, trial in enumerate(top_3_trials, 1):
         accuracy = trial.value
-        inference_time = trial.user_attrs.get("inference_time")
+        inference_time = trial.user_attrs.get("avg_inference_time")
         
+        print(f"--- Top {rank} (Trial #{trial.number}) ---")
         print(f"Accuracy: {accuracy:.4f}")
         if inference_time is not None:
-            print(f"Inference Time: {inference_time:.6f} sec/batch")
-        print(f"Hyperparameters: {trial.params}\n")
+            print(f"Average Inference Time: {inference_time:.6f} sec/batch")
+        print("Hyperparameters:")
+        for param, val in trial.params.items():
+            print(f"  - {param}: {val}")
+        print("-" * 50 + "\n")
