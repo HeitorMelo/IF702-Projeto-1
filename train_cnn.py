@@ -12,7 +12,7 @@ from src.metrics import calculate_metrics, plot_confusion_matrix_figure
 
 from src.utils import EarlyStopping
 
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def objective(trial):
     lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
@@ -27,21 +27,6 @@ def objective(trial):
     dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.3)
     pool_size = trial.suggest_categorical("pool_size", [1, 2])  # 1 = sem pooling, 2 = pool 2x2
     
-
-    run_name = f"CNN_trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
-    
-    run = wandb.init(
-        entity="Proj-IF702",
-        project="miniprojeto1-cifar10",
-        name=run_name,
-        group="cnn_optimization",
-        config={"lr": lr, "num_conv_layers": num_conv_layers, "kernel_size": kernel_size, "stride": stride, "padding": padding, "dropout_rate": dropout_rate,
-            "pool_size": pool_size, "batch_size": batch_size,"criterion": criterion_name, "activation": activation_name},
-        reinit=True
-    )
-    
-    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=False)
-
     try:
         model = build_cnn(
             num_classes=10,
@@ -53,10 +38,25 @@ def objective(trial):
             pool_size=pool_size,
             dropout_rate=dropout_rate,
             activation_name=activation_name
-        )
+        ).to(device)
     except ValueError:
         # Se a combinação de hiperparâmetros zerar/invalidar a imagem, o Optuna descarta a trial
+        if wandb.run is not None:
+            wandb.finish()
         raise optuna.exceptions.TrialPruned()
+
+    run_name = f"CNN_trial-{trial.number}_lr-{lr:.4f}_bs-{batch_size}"
+    run = wandb.init(
+            entity="Proj-IF702",
+            project="miniprojeto1-cifar10",
+            name=run_name,
+            group="cnn_optimization",
+            config={"lr": lr, "num_conv_layers": num_conv_layers, "kernel_size": kernel_size, "stride": stride, "padding": padding, "dropout_rate": dropout_rate,
+                "pool_size": pool_size, "batch_size": batch_size,"criterion": criterion_name, "activation": activation_name},
+            reinit=True
+        )
+        
+    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=False)
 
     criterion = nn.MSELoss() if criterion_name == "MSELoss" else nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -70,6 +70,8 @@ def objective(trial):
 
     epochs = 15
     inference_times = []
+    best_acc=0.0
+    best_labels, best_preds = None, None
 
     for epoch in range(epochs):
         train_loss = train_epoch(model, train_loader, optimizer, criterion, criterion_name, epoch + 1, epochs)
@@ -78,7 +80,10 @@ def objective(trial):
         inference_times.append(inference_time)
 
         metrics = calculate_metrics(labels, preds)
-        
+        if metrics["acc_total"] > best_acc:
+            best_acc = metrics["acc_total"]
+            best_labels, best_preds = labels, preds
+
         log_data={
             "epoch": epoch + 1, 
             "train_loss": train_loss,
@@ -101,14 +106,7 @@ def objective(trial):
             print(f"Early stopping ativado na época {epoch + 1}")
             break
     
-    # Regra importante: Carrega os pesos antes de ativar a ocntagem da paciencia
-    model.load_state_dict(torch.load(model_path))
-
-    # 2. Recalcula a validação com os pesos do MELHOR modelo
-    val_loss, inference_time, labels, preds = validate_epoch(
-        model, val_loader, criterion, criterion_name, epoch + 1, epochs
-    )
-    best_metrics = calculate_metrics(labels, preds)
+    best_metrics = calculate_metrics(best_labels, best_preds)
 
     # 3. Plota a figura estática em alta resolução para o WandB
     fig = plot_confusion_matrix_figure(best_metrics["confusion_matrix"], class_names)
@@ -120,10 +118,11 @@ def objective(trial):
     plt.close(fig)  # Libera a memória do Matplotlib
 
     wandb.save(model_path, base_path=run.dir) # save best model no wandb
+
     average_inference_time = sum(inference_times) / len(inference_times)
-    trial.set_user_attr("inference_time", average_inference_time)
+    trial.set_user_attr("avg_inference_time", average_inference_time)
     wandb.finish()
-    return best_metrics["acc_total"]
+    return best_acc
 
 if __name__ == "__main__":
     study = optuna.create_study(
@@ -146,12 +145,12 @@ if __name__ == "__main__":
 
     for rank, trial in enumerate(top_3_trials, 1):
         accuracy = trial.value
-        inference_time = trial.user_attrs.get("inference_time")
+        inference_time = trial.user_attrs.get("avg_inference_time")
         
         print(f"--- Top {rank} (Trial #{trial.number}) ---")
         print(f"Accuracy: {accuracy:.4f}")
         if inference_time is not None:
-            print(f"Inference Time: {inference_time:.6f} sec/batch")
+            print(f"Average Inference Time: {inference_time:.6f} sec/batch")
         print("Hyperparameters:")
         for param, val in trial.params.items():
             print(f"  - {param}: {val}")
