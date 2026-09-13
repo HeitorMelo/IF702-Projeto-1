@@ -134,18 +134,29 @@ if __name__ == "__main__":
         load_if_exists=True
     )
     study.optimize(objective, n_trials=20)
-    
-    pareto_front_trials = study.best_trials
 
-    print(f"Number of Pareto-optimal models found: {len(pareto_front_trials)}\n")
 
-    for i, trial in enumerate(pareto_front_trials):
-        print(f"--- Pareto Optimal Model {i+1} ---")
-        
+    # Filtra e exibe o Top 3
+    completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    sorted_trials = sorted(completed_trials, key=lambda t: t.value, reverse=True)
+    top_3_trials = sorted_trials[:3]
+
+
+    print(f"\n================ TOP {len(top_3_trials)} MELHORES MODELOS ================\n")
+
+    for rank, trial in enumerate(top_3_trials, 1):
         accuracy = trial.value
         inference_time = trial.user_attrs.get("inference_time")
         
+        print(f"--- Top {rank} (Trial #{trial.number}) ---")
         print(f"Accuracy: {accuracy:.4f}")
         if inference_time is not None:
             print(f"Inference Time: {inference_time:.6f} sec/batch")
-        print(f"Hyperparameters: {trial.params}\n")
+        print("Hyperparameters:")
+        for param, val in trial.params.items():
+            print(f"  - {param}: {val}")
+        print("-" * 50 + "\n")
+
+
+
+    
