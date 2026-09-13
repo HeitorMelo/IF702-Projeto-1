@@ -50,15 +50,16 @@ def train_epoch(model, dataloader, optimizer, criterion, criterion_name, epoch=0
         
         if criterion_name == "MSELoss":
             labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float().to(images.device)
+            loss_inputs = torch.softmax(outputs, dim=1) # Esfera de probabilidade (0.0 a 1.0)
         else:
             labels_loss = labels
+            loss_inputs = outputs # CrossEntropyLoss já aplica LogSoftmax internamente!
             
-        loss = criterion(outputs, labels_loss)
+        loss = criterion(loss_inputs, labels_loss)
         loss.backward()
         optimizer.step()
         
         running_loss += loss.item()
-
         pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
     avg_loss = running_loss / len(dataloader)
@@ -80,10 +81,13 @@ def validate_epoch(model, dataloader, criterion, criterion_name, epoch=0, total_
             
             if criterion_name == "MSELoss":
                 labels_loss = torch.nn.functional.one_hot(labels, num_classes=10).float().to(images.device) 
+                loss_inputs = torch.softmax(outputs, dim=1)
+
             else:
                 labels_loss = labels
+                loss_inputs = outputs
                 
-            loss = criterion(outputs, labels_loss)
+            loss = criterion(loss_inputs, labels_loss)
             running_loss += loss.item()
             
             preds = torch.argmax(outputs, dim=1)
