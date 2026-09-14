@@ -1,0 +1,3 @@
+Model,WandB Run ID,Val Acc (WandB),Test Acc,Test Precision,Test Recall,Test Loss,Inf Time (s/batch),Batch Size,LR,Activation,Criterion
+MLP,c45l7zpm,0.5309,0.5156,0.5139,0.5156,0.0629,0.000949,32,0.00023093313862814483,ReLU,MSELoss
+CNN,vtm1gwzb,0.8024,0.7933,0.7957,0.7933,0.6285,0.13894,64,0.000443123791711039,ReLU,CrossEntropyLoss
