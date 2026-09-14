@@ -1,5 +1,6 @@
 import os
 import optuna
+import wandb
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -13,24 +14,60 @@ from src.utils import TimedModel
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def load_best_trial(study_name, db_path="sqlite:///cifar10_optuna.db"):
-    """Carrega a melhor trial concluída de um estudo do Optuna."""
-    study = optuna.load_study(study_name=study_name, storage=db_path)
-    return study.best_trial
 
-def find_checkpoint_path(trial_number, model_type):
-    """Busca o arquivo .pth correspondente ao trial nos diretórios do WandB."""
-    wandb_dir = "./wandb"
-    filename_target = f"best_{model_type.lower()}_trial_{trial_number}.pth"
+ENTITY = "Proj-IF702"
+PROJECT = "miniprojeto1-cifar10"
+
+def fetch_best_run_from_wandb(group_name):
+    """
+    Busca todas as runs do grupo no WandB e retorna a com maior 'val_acc'.
+    """
+    api = wandb.Api()
     
-    for root, _, files in os.walk(wandb_dir):
-        if filename_target in files:
-            return os.path.join(root, filename_target)
+    # Filtra apenas pelo grupo diretamente no servidor do WandB
+    runs = api.runs(f"{ENTITY}/{PROJECT}", filters={"group": group_name})
     
-    if os.path.exists(filename_target):
-        return filename_target
-        
-    return None
+    best_run = None
+    best_acc = -1.0
+    
+    for run in runs:
+        val_acc = run.summary.get("val_acc", 0.0)
+        if val_acc > best_acc:
+            best_acc = val_acc
+            best_run = run
+            
+    return best_run
+
+def download_checkpoint_from_wandb(run, model_type):
+    """
+    Faz o download do arquivo .pth associado à run diretamente do servidor do WandB.
+    """
+    os.makedirs("./checkpoints", exist_ok=True)
+    
+    # Procura o arquivo .pth salvo nos arquivos da run
+    target_file = None
+    for file in run.files():
+        if file.name.endswith(".pth") and model_type.lower() in file.name.lower():
+            target_file = file
+            break
+            
+    if target_file is None:
+        # Fallback para qualquer arquivo .pth na run
+        for file in run.files():
+            if file.name.endswith(".pth"):
+                target_file = file
+                break
+
+    if target_file is None:
+        raise FileNotFoundError(f"Nenhum arquivo .pth encontrado na run {run.id} do WandB.")
+
+    download_path = os.path.join("./checkpoints", os.path.basename(target_file.name))
+    print(f"📥 Baixando '{target_file.name}' da run {run.id}...")
+    target_file.download(root="./checkpoints", replace=True)
+    print(f"✅ Checkpoint salvo localmente em: {download_path}")
+    
+    return download_path
+
 
 def evaluate_on_test(model, test_loader, criterion_name="CrossEntropyLoss"):
     """Avalia o modelo no conjunto de teste."""
@@ -66,112 +103,122 @@ def evaluate_on_test(model, test_loader, criterion_name="CrossEntropyLoss"):
     
     return metrics, avg_loss, avg_inference_time
 
-def evaluate_best_model(study_name, model_type):
-    """Reconstrói e avalia o melhor modelo de um estudo (MLP ou CNN)."""
+def evaluate_best_model_wandb(group_name, model_type):
+    """Obtém a melhor run do WandB Online, baixa o checkpoint e avalia no Teste."""
     class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
                    'dog', 'frog', 'horse', 'ship', 'truck']
 
-    print(f"\n================ AVALIANDO MELHOR MODELO - {model_type.upper()} ================")
+    print(f"\n================ AVALIANDO MELHOR MODELO ONLINE ({model_type.upper()}) ================")
     
     try:
-        best_trial = load_best_trial(study_name)
+        run = fetch_best_run_from_wandb(group_name)
+        if not run:
+            print(f"❌ Nenhuma run encontrada para o grupo '{group_name}'.")
+            return None
     except Exception as e:
-        print(f"Erro ao carregar o estudo '{study_name}': {e}")
+        print(f"❌ Erro ao conectar com a API do WandB: {e}")
         return None
 
     os.makedirs("test_results", exist_ok=True)
-    params = best_trial.params
-    checkpoint_path = find_checkpoint_path(best_trial.number, model_type)
+    config = run.config
+    val_acc = run.summary.get("val_acc", 0.0)
     
-    print(f"Melhor Trial: #{best_trial.number}")
-    print(f"Val Accuracy (Optuna): {best_trial.value:.4f}")
+    print(f"Run Campeã WandB: {run.name} (ID: {run.id}) | Criador: {run.user.username if hasattr(run, 'user') else user_login}")
+    print(f"Val Accuracy (WandB Summary): {val_acc:.4f}")
+    print("Config do WandB Online:", config)
 
-    print(f"Chaves do Trial #{best_trial.number}:", params)
+    # 1. Baixa o checkpoint diretamente do WandB
+    try:
+        checkpoint_path = download_checkpoint_from_wandb(run, model_type)
+    except Exception as e:
+        print(f"❌ Erro no download do modelo: {e}")
+        return None
 
-    
-    # Garante is_mlp=True e o DataLoader adequado
     is_mlp = (model_type.upper() == "MLP")
-    batch_size = params.get("batch_size", 128)
+    batch_size = config.get("batch_size", 64)
     _, _, test_loader = get_dataloaders(batch_size=batch_size, is_mlp=is_mlp)
 
-    # 1. Reconstrói a arquitetura campeã usando os argumentos exatos do seu build_mlp
+    # 2. Instancia o modelo com a config gravada na nuvem
     if is_mlp:
-        # Tenta pegar 'neurons_per_layer' do optuna, com fallback para 'hidden_dim' se usado previamente
-        neurons = params.get("neurons_per_layer", params.get("hidden_dim", 128))
-        
+        neurons = config.get("neurons_per_layer", config.get("hidden_dim", 256))
         model = build_mlp(
             input_size=3072,
             num_classes=10,
-            num_layers=params.get("num_layers", 2),
+            num_layers=config.get("num_layers", 1),
             neurons_per_layer=neurons,
-            activation_name=params.get("activation", "ReLU"),
-            dropout_rate=params.get("dropout_rate", 0.2)
+            activation_name=config.get("activation", "ReLU"),
+            dropout_rate=config.get("dropout_rate", 0.05)
         ).to(device)
     else: # CNN
-        # Captura os parâmetros exatos do Optuna com fallbacks para variações de nomes
-        
-       model = build_cnn(
+        model = build_cnn(
             num_classes=10,
-            num_conv_layers=params["num_conv_layers"],  # Acessa diretamente a chave 'num_conv_layers' (3)
-            filters_base=32,
-            kernel_size=params["kernel_size"],
-            stride=params["stride"],
-            padding=params["padding"],
-            pool_size=params["pool_size"],
-            dropout_rate=params["dropout_rate"],
-            activation_name=params["activation"]
+            num_conv_layers=config.get("num_conv_layers", 3),
+            filters_base=config.get("filters_base", 32),
+            kernel_size=config.get("kernel_size", 3),
+            stride=config.get("stride", 1),
+            padding=config.get("padding", 1),
+            pool_size=config.get("pool_size", 2),
+            dropout_rate=config.get("dropout_rate", 0.2),
+            activation_name=config.get("activation", "GELU")
         ).to(device)
 
+    # 3. Carrega os pesos no modelo instanciado
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
-    # 2. Carrega os pesos salvos
-    if checkpoint_path and os.path.exists(checkpoint_path):
-        print(f"Carregando pesos de: {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    else:
-        print(f"⚠️ AVISO: Checkpoint não encontrado para Trial #{best_trial.number} ({checkpoint_path})!")
-
-
-    # 3. Avalia no conjunto de Teste
-    criterion_name = params.get("criterion", "CrossEntropyLoss")
+    # 4. Avalia no conjunto de Teste
+    criterion_name = config.get("criterion", "CrossEntropyLoss")
     metrics, test_loss, inf_time = evaluate_on_test(model, test_loader, criterion_name)
 
     print(f"-> TEST Accuracy: {metrics['acc_total']:.4f}")
     print(f"-> TEST Loss: {test_loss:.4f}")
     print(f"-> Inference Time/Batch: {inf_time:.6f} s")
 
-    # 4. Salva a Matriz de Confusão
+    # 5. Salva a Matriz de Confusão
     fig = plot_confusion_matrix_figure(metrics["confusion_matrix"], class_names)
-    fig.suptitle(f"Melhor {model_type.upper()} (Trial #{best_trial.number}) - Test Acc: {metrics['acc_total']:.2%}")
-    fig.savefig(f"test_results/cm_best_{model_type.lower()}_trial{best_trial.number}.png")
+    # Limpa títulos anteriores da figura para não sobrepor
+    for ax in fig.get_axes():
+        ax.set_title("") 
+    
+    # Define um título único, limpo e com espaço adequado (y=1.02)
+    fig.suptitle(
+        f"Melhor {model_type.upper()} ({run.name}) - Test Acc: {metrics['acc_total']:.2%}",
+        fontsize=12,
+        y=0.98
+    )
+    
+    # Ajusta o layout para garantir que nada fique cortado ou sobreposto
+    fig.tight_layout()
+    fig.savefig(f"test_results/cm_best_{model_type.lower()}_{run.id}.png", bbox_inches='tight', dpi=300)
     plt.close(fig)
-
     return {
         "Model": model_type.upper(),
-        "Trial": best_trial.number,
-        "Val Acc (Optuna)": round(best_trial.value, 4),
+        "WandB Run ID": run.id,
+        "Val Acc (WandB)": round(val_acc, 4),
         "Test Acc": round(metrics["acc_total"], 4),
         "Test Precision": round(metrics["precision"], 4),
         "Test Recall": round(metrics["recall"], 4),
         "Test Loss": round(test_loss, 4),
         "Inf Time (s/batch)": round(inf_time, 6),
-        "Batch Size": params.get("batch_size"),
-        "LR": params.get("lr"),
-        "Activation": params.get("activation"),
-        "Criterion": params.get("criterion")
+        "Batch Size": config.get("batch_size"),
+        "LR": config.get("lr"),
+        "Activation": config.get("activation"),
+        "Criterion": config.get("criterion")
     }
 
-if __name__ == "__main__":
-    STUDY_MLP = "mlp-cifar10-accuracy"
-    STUDY_CNN = "cnn-cifar10-accuracy-"
 
-    mlp_best = evaluate_best_model(STUDY_MLP, "MLP")
-    cnn_best = evaluate_best_model(STUDY_CNN, "CNN")
+if __name__ == "__main__":
+    GROUP_MLP = "mlp_optimization" 
+    GROUP_CNN = "cnn_optimization"
+
+    mlp_best = evaluate_best_model_wandb(GROUP_MLP, "MLP")
+    cnn_best = evaluate_best_model_wandb(GROUP_CNN, "CNN")
 
     results = [res for res in [mlp_best, cnn_best] if res is not None]
-    df = pd.DataFrame(results)
+    
+    if results:
+        df = pd.DataFrame(results)
+        print("\n================ COMPARAÇÃO DOS MELHORES MODELOS (TESTE) ================\n")
+        print(df.to_string(index=False))
 
-    print("\n================ COMPARAÇÃO DOS MELHORES MODELOS (TESTE) ================\n")
-    print(df.to_string(index=False))
-
-    df.to_csv("test_results/best_models_comparison.csv", index=False)
-    print("\n✅ Resultados salvos em 'test_results/best_models_comparison.csv' e matrizes salvas em 'test_results/'.")
+        df.to_csv("test_results/best_models_comparison.csv", index=False)
+        print("\n✅ Resultados salvos em 'test_results/best_models_comparison.csv' e matrizes salvas em 'test_results/'.")
