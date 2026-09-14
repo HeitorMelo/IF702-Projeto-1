@@ -26,6 +26,7 @@ def objective(trial):
     padding = trial.suggest_categorical("padding", [0, 1, 2])
     dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.3)
     pool_size = trial.suggest_categorical("pool_size", [1, 2])  # 1 = sem pooling, 2 = pool 2x2
+    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
     
     try:
         model = build_cnn(
@@ -52,14 +53,14 @@ def objective(trial):
             name=run_name,
             group="cnn_optimization",
             config={"lr": lr, "num_conv_layers": num_conv_layers, "kernel_size": kernel_size, "stride": stride, "padding": padding, "dropout_rate": dropout_rate,
-                "pool_size": pool_size, "batch_size": batch_size,"criterion": criterion_name, "activation": activation_name},
+                "pool_size": pool_size, "batch_size": batch_size,"criterion": criterion_name, "activation": activation_name, "weight_decay": weight_decay},
             reinit=True
         )
         
-    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=False)
+    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=False, use_augmentation=True)
 
     criterion = nn.MSELoss() if criterion_name == "MSELoss" else nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
                    'dog', 'frog', 'horse', 'ship', 'truck'] 
