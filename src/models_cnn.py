@@ -47,15 +47,20 @@ class CNN(nn.Module):
 
         self.conv_block = nn.Sequential(*layers)
         
-        # Garante que a dimensão não ficou <= 0 após as convoluções e poolings
-        if current_spatial_size <= 0:
-            raise ValueError(
-                f"Combinação inválida de parâmetros (kernel_size={kernel_size}, stride={stride}, "
-                f"padding={padding}, pool_size={pool_size}). A dimensão espacial reduziu para {current_spatial_size}."
-            )
-
         last_num_filters = filters_base * (2 ** (num_conv_layers - 1))
         flatten_size = last_num_filters * current_spatial_size * current_spatial_size
+
+        # Limite de conexões para evitar alocação excessiva de RAM (ex: Max ~65k conexões ou 512MB de pesos)
+        MAX_IN_FEATURES = 65536
+
+        # Garante que a dimensão espacial não zerou E que in_features não vai estourar a RAM
+        if current_spatial_size <= 0 or flatten_size > MAX_IN_FEATURES:
+            raise ValueError(
+                f"Combinação inválida de parâmetros (kernel_size={kernel_size}, stride={stride}, "
+                f"padding={padding}, pool_size={pool_size}). Spatial size={current_spatial_size}, "
+                f"in_features={flatten_size} excede o limite de {MAX_IN_FEATURES}."
+            )
+
         
         # Camadas Densas / Classificador Final
         # Dimensão vinda da saída do conv_block achatada

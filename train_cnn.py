@@ -57,7 +57,7 @@ def objective(trial):
             reinit=True
         )
         
-    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=False)
+    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=False, use_augmentation=True)
 
     criterion = nn.MSELoss() if criterion_name == "MSELoss" else nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -133,7 +133,7 @@ if __name__ == "__main__":
         sampler=optuna.samplers.TPESampler(),
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=25)
+    study.optimize(objective, n_trials=20, catch=(ValueError,))
 
 
     # Filtra e exibe o Top 3

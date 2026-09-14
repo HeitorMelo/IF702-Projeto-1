@@ -3,7 +3,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split, ConcatDataset, Subset
 
-def get_dataloaders(batch_size=32, is_mlp=False, use_augmentation=False, original_fraction=0.2):
+def get_dataloaders(batch_size=32, is_mlp=False, use_augmentation=False, original_fraction=0.3):
     transform_list = [
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))

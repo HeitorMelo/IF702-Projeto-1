@@ -36,7 +36,7 @@ def objective(trial):
         reinit=True
     )
     
-    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=True)
+    train_loader, val_loader, _ = get_dataloaders(batch_size=batch_size, is_mlp=True, use_augmentation=True)
     
     model = build_mlp(3072, 10, num_layers=num_layers, neurons_per_layer=neurons_per_layer, activation_name=activation_name, dropout_rate=dropout_rate)
     
